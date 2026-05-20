@@ -1,7 +1,8 @@
 # Serenichron Email Signature Generator
 
 A single-file, zero-build web app that generates on-brand HTML email signatures for the
-Serenichron team. Open `index.html` in any browser — no server, no install.
+Serenichron team. **Live: https://serenichron.github.io/serenichron-signatures/** — or open
+`index.html` in any browser. No server, no install.
 
 Modeled on the [Kontas signature generator](https://github.com/Kontas-Management/kontas-signatures),
 restyled to the [Serenichron design system](https://github.com/serenichron) (petrol teal +
