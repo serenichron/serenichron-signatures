@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serenichron Email Signature Generator</title>
+    <link rel="icon" href="https://serenichron.com/wp-content/uploads/2025/06/cropped-favicon-serenichron-v2-4-32x32.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        /* ---- Serenichron design tokens (see DESIGN.md in serenichron repo) ---- */
+        :root {
+            --primary: #FD9D58;          /* signal orange — actions only */
+            --primary-hover: #F07B0F;
+            --secondary: #367883;        /* petrol teal — identity */
+            --secondary-hover: #2C6470;
+            --tertiary: #AEC8CC;
+            --navy: #040214;             /* near-black navy */
+            --surface: #F9F9F9;
+            --surface-variant: #E9F5F6;  /* pale teal */
+            --on-surface: #333333;
+            --outline: #DCE7E9;
+            --radius: 10px;
+            --radius-md: 12px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Montserrat', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--on-surface);
+            background-color: var(--surface);
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+        .header {
+            background: linear-gradient(120deg, #040214 0%, #367883 55%, rgba(54,120,131,0.35) 100%);
+            color: #fff;
+            padding: 40px 30px;
+            border-radius: var(--radius-md);
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header img { height: 40px; margin-bottom: 16px; background: #fff; padding: 10px 18px; border-radius: var(--radius); }
+        .header h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; }
+        .header p { font-size: 1.05rem; opacity: 0.9; font-weight: 300; }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .form-section, .preview-section {
+            background: #fff;
+            padding: 30px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--outline);
+        }
+
+        .form-section h2, .preview-section h2 {
+            color: var(--secondary);
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+        .tab.active { color: var(--secondary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; color: #555; font-size: 14px; }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--outline);
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--secondary); }
+
+        .file-upload {
+            border: 2px dashed var(--secondary);
+            border-radius: var(--radius);
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            color: var(--secondary);
+        }
+        .file-upload:hover { background-color: var(--surface-variant); }
+        .file-upload input { display: none; }
+
+        .btn {
+            background: var(--primary);
+            color: var(--navy);
+            padding: 12px 24px;
+            border: 2px solid var(--primary);
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: inherit;
+            transition: all 0.2s;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        .btn:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+        .btn-secondary { background: transparent; color: var(--secondary); border-color: var(--tertiary); }
+        .btn-secondary:hover { background: var(--surface-variant); border-color: var(--secondary); }
+
+        .csv-info {
+            background: var(--surface-variant);
+            border: 1px solid var(--tertiary);
+            border-radius: var(--radius);
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .csv-info h4 { color: var(--secondary); margin-bottom: 8px; }
+        .csv-example {
+            background: #fff;
+            border: 1px solid var(--outline);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            margin-top: 8px;
+        }
+
+        .preview-frame {
+            border: 1px solid var(--outline);
+            border-radius: var(--radius);
+            padding: 24px;
+            background: #fff;
+            min-height: 260px;
+        }
+        .signature-preview { font-family: Arial, sans-serif; }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(120%);
+            background: var(--navy);
+            color: #fff;
+            padding: 14px 24px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 10px 50px rgba(0,0,0,0.25);
+            transition: transform 0.3s ease;
+            z-index: 1080;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.error { background: #DC3545; }
+
+        .instructions {
+            background: #fff;
+            border: 1px solid var(--outline);
+            border-radius: var(--radius-md);
+            padding: 30px;
+        }
+        .instructions h2 { color: var(--secondary); font-weight: 700; margin-bottom: 8px; }
+        .instructions .lead { font-weight: 300; margin-bottom: 24px; color: #555; }
+        .client-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .client-card {
+            background: var(--surface-variant);
+            border: 1px solid var(--tertiary);
+            border-radius: var(--radius-md);
+            padding: 24px;
+        }
+        .client-card h3 { color: var(--secondary); font-size: 1.05rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .client-card ol { padding-left: 20px; }
+        .client-card li { font-size: 14px; margin-bottom: 8px; }
+        .client-card .recommend { display: inline-block; background: var(--primary); color: var(--navy); font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 9999px; margin-left: 6px; }
+
+        .batch-results {
+            background: var(--surface-variant);
+            border: 1px solid var(--tertiary);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .batch-results h4 { color: var(--secondary); margin-bottom: 12px; }
+        .processing-list { max-height: 220px; overflow-y: auto; }
+        .processing-item {
+            padding: 8px 12px;
+            margin-bottom: 5px;
+            background: #fff;
+            border-radius: 6px;
+            border-left: 4px solid var(--primary);
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.7rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://serenichron.com/wp-content/uploads/2025/06/Serenichron-logo-01-600x180.png" alt="Serenichron">
+            <h1>Email Signature Generator</h1>
+            <p>Create on-brand signatures for the Serenichron team</p>
+        </div>
+
+        <div class="main-content">
+            <div class="form-section">
+                <h2>Configure</h2>
+
+                <div class="tabs">
+                    <div class="tab active" onclick="switchTab('individual')">Single person</div>
+                    <div class="tab" onclick="switchTab('batch')">CSV import</div>
+                </div>
+
+                <div id="individual-tab" class="tab-content active">
+                    <form id="signature-form">
+                        <div class="form-group">
+                            <label for="firstName">First name</label>
+                            <input type="text" id="firstName" name="firstName" value="Vlad" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="lastName">Last name</label>
+                            <input type="text" id="lastName" name="lastName" value="Tudorie" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="title">Title</label>
+                            <input type="text" id="title" name="title" value="Founder &amp; Principal Consultant" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="photo">Profile photo URL (optional)</label>
+                            <input type="url" id="photo" name="photo" value="" placeholder="https://serenichron.com/.../photo.png">
+                        </div>
+                        <div class="form-group">
+                            <label for="phone">Phone</label>
+                            <input type="text" id="phone" name="phone" value="+40 723 000 000" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" name="email" value="vlad@serenichron.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="address">Address (optional)</label>
+                            <textarea id="address" name="address" rows="2" placeholder="Leave blank to omit"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="ctaText">CTA text (optional)</label>
+                            <input type="text" id="ctaText" name="ctaText" placeholder="Book a discovery call">
+                        </div>
+                        <div class="form-group">
+                            <label for="ctaUrl">CTA URL (optional)</label>
+                            <input type="url" id="ctaUrl" name="ctaUrl" placeholder="https://calendly.com/...">
+                        </div>
+                        <div class="form-group">
+                            <label for="linkedin">LinkedIn URL (optional)</label>
+                            <input type="url" id="linkedin" name="linkedin" value="https://www.linkedin.com/company/serenichron">
+                        </div>
+                        <div class="form-group">
+                            <label for="facebook">Facebook URL (optional)</label>
+                            <input type="url" id="facebook" name="facebook" value="https://www.facebook.com/serenichron/">
+                        </div>
+                        <div class="form-group">
+                            <label for="youtube">YouTube URL (optional)</label>
+                            <input type="url" id="youtube" name="youtube" value="">
+                        </div>
+
+                        <button type="button" class="btn" onclick="copySignature()">Copy signature</button>
+                        <button type="button" class="btn btn-secondary" onclick="downloadSingle()">Download HTML</button>
+                    </form>
+                </div>
+
+                <div id="batch-tab" class="tab-content">
+                    <div class="csv-info">
+                        <h4>Accepted CSV format</h4>
+                        <p>Columns, in this order (header row required):</p>
+                        <div class="csv-example">
+FirstName,LastName,Title,Phone,Email,Address,CTAText,CTAUrl,LinkedIn,Facebook,YouTube,Photo
+Vlad,Tudorie,Founder,+40 723 000 000,vlad@serenichron.com,,"Book a discovery call",https://calendly.com/vlad,https://www.linkedin.com/company/serenichron,https://www.facebook.com/serenichron/,,
+                        </div>
+                    </div>
+
+                    <div class="file-upload" onclick="document.getElementById('csv-file').click()">
+                        <input type="file" id="csv-file" accept=".csv" onchange="handleCSVUpload(event)">
+                        <div><strong>Choose a CSV file</strong><br>or drag &amp; drop here</div>
+                    </div>
+
+                    <button type="button" class="btn" onclick="processBatch()" id="process-batch" style="display: none;">Process all</button>
+                    <button type="button" class="btn btn-secondary" onclick="downloadBatch()" id="download-batch" style="display: none;">Download ZIP archive</button>
+
+                    <div id="batch-results" class="batch-results" style="display: none;">
+                        <h4>Results</h4>
+                        <div id="processing-list" class="processing-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="preview-section">
+                <h2>Preview</h2>
+                <div class="preview-frame">
+                    <div id="signature-preview" class="signature-preview"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h2>How to install your signature</h2>
+            <p class="lead">Click <strong>Copy signature</strong> above, then follow the steps for your email client. The copy includes formatting, logo, and links.</p>
+            <div class="client-grid">
+                <div class="client-card">
+                    <h3>Apple Mail <span class="recommend">paste works</span></h3>
+                    <ol>
+                        <li>Mail &rarr; <strong>Settings</strong> &rarr; <strong>Signatures</strong>.</li>
+                        <li>Pick your account, click <strong>+</strong> to add a signature.</li>
+                        <li>Uncheck <em>"Always match my default message font"</em>.</li>
+                        <li>Select the placeholder text and <strong>Paste</strong> (&#8984;V).</li>
+                    </ol>
+                </div>
+                <div class="client-card">
+                    <h3>Outlook (Mac &amp; new Windows)</h3>
+                    <ol>
+                        <li>Outlook &rarr; <strong>Settings</strong> &rarr; <strong>Signatures</strong> (or Mail &rarr; Compose &amp; reply).</li>
+                        <li>Create a new signature, click into the edit box.</li>
+                        <li><strong>Paste</strong> (&#8984;V / Ctrl+V). Set it as default for new mail &amp; replies.</li>
+                    </ol>
+                </div>
+                <div class="client-card">
+                    <h3>Outlook (classic Windows)</h3>
+                    <ol>
+                        <li><strong>Download HTML</strong> instead of copy.</li>
+                        <li>Open the file in a browser, select all (Ctrl+A), copy (Ctrl+C).</li>
+                        <li>File &rarr; Options &rarr; Mail &rarr; <strong>Signatures</strong>, paste into a new signature.</li>
+                    </ol>
+                </div>
+                <div class="client-card">
+                    <h3>Gmail</h3>
+                    <ol>
+                        <li>Gmail &rarr; <strong>Settings</strong> (gear) &rarr; See all settings.</li>
+                        <li>Scroll to <strong>Signature</strong> &rarr; Create new.</li>
+                        <li><strong>Paste</strong> into the box and Save changes at the bottom.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        let csvData = [];
+        let generatedSignatures = [];
+
+        const LOGO_URL = 'https://serenichron.com/wp-content/uploads/2025/06/Serenichron-logo-01-600x180.png';
+        const TAGLINE = 'Business systems, simplified.';
+        const WEBSITE = 'serenichron.com';
+        const WEBSITE_URL = 'https://serenichron.com';
+        // Brand tokens
+        const TEAL = '#367883';
+        const NAVY = '#040214';
+        const MUTED = '#888888';
+        const TEXT = '#333333';
+
+        document.addEventListener('DOMContentLoaded', function() {
+            generatePreview();
+            document.querySelectorAll('#signature-form input, #signature-form textarea')
+                .forEach(input => input.addEventListener('input', generatePreview));
+        });
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+        }
+
+        function esc(s) {
+            return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function generateSignatureHTML(data) {
+            const social = [];
+            const linkStyle = `color:${TEAL};text-decoration:none;font-weight:600;font-size:13px;`;
+            if (data.linkedin) social.push(`<a href="${esc(data.linkedin)}" style="${linkStyle}">LinkedIn</a>`);
+            if (data.facebook) social.push(`<a href="${esc(data.facebook)}" style="${linkStyle}">Facebook</a>`);
+            if (data.youtube)  social.push(`<a href="${esc(data.youtube)}" style="${linkStyle}">YouTube</a>`);
+            const sep = `<span style="color:${MUTED};font-size:13px;">&nbsp;&middot;&nbsp;</span>`;
+            const socialHTML = social.join(sep);
+
+            const photoCell = data.photo ? `<td style="padding-right:16px;vertical-align:middle;">
+                        <img src="${esc(data.photo)}" alt="${esc(data.firstName)} ${esc(data.lastName)}" width="64" height="64" style="width:64px;height:64px;border-radius:50%;object-fit:cover;display:block;border:0;">
+                    </td>` : '';
+
+            const ctaRow = data.ctaUrl ? `<tr><td style="padding:0 0 6px 0;font-size:13px;">
+                    <a href="${esc(data.ctaUrl)}" style="color:${TEAL};text-decoration:none;font-weight:600;">&#128197; ${esc(data.ctaText) || 'Book a discovery call'}</a>
+                </td></tr>` : '';
+
+            const addressRow = data.address ? `<tr><td style="padding:0 0 4px 0;font-size:13px;color:${TEXT};">${esc(data.address).replace(/\n/g, '<br>')}</td></tr>` : '';
+
+            return `<!DOCTYPE html>
+<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+    <meta charset="UTF-8">
+    <!--[if mso]>
+    <xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+    <![endif]-->
+</head>
+<body style="margin:0;padding:0;">
+    <table cellpadding="0" cellspacing="0" border="0" style="max-width:460px;font-family:Arial,Helvetica,sans-serif;color:${TEXT};">
+        <tr>
+            <td style="padding-bottom:10px;">
+                <table cellpadding="0" cellspacing="0" border="0"><tr>
+                    ${photoCell}
+                    <td style="vertical-align:middle;">
+                        <p style="margin:0;font-size:16px;color:${TEAL};font-weight:bold;">${esc(data.firstName)} ${esc(data.lastName)}</p>
+                        <p style="margin:2px 0 0 0;font-size:13px;color:${MUTED};">${esc(data.title)}</p>
+                    </td>
+                </tr></table>
+            </td>
+        </tr>
+        <tr><td style="padding:0;">
+            <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+                <tr><td style="padding:0 0 4px 0;font-size:13px;color:${TEXT};">
+                    <a href="tel:${esc(data.phone).replace(/\s/g, '')}" style="text-decoration:none;color:${TEXT};">${esc(data.phone)}</a>
+                    <span style="color:${MUTED};">&nbsp;&middot;&nbsp;</span>
+                    <a href="mailto:${esc(data.email)}" style="text-decoration:none;color:${TEXT};">${esc(data.email)}</a>
+                </td></tr>
+                ${ctaRow}
+                ${addressRow}
+            </table>
+        </td></tr>
+        <tr><td style="padding:10px 0 8px 0;">
+            <a href="${WEBSITE_URL}" target="_blank" style="text-decoration:none;">
+                <img src="${LOGO_URL}" alt="Serenichron" width="180" style="display:block;border:0;width:180px;height:auto;">
+            </a>
+        </td></tr>
+        <tr><td style="padding:0 0 8px 0;">
+            <p style="margin:0;font-size:12px;color:${TEAL};font-weight:600;">${TAGLINE}</p>
+        </td></tr>
+        <tr><td style="padding:6px 0 0 0;border-top:1px solid #DCE7E9;">
+            <table cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-top:8px;font-size:13px;">
+                <a href="${WEBSITE_URL}" target="_blank" style="text-decoration:none;color:${TEAL};font-weight:bold;">${WEBSITE}</a>
+                ${socialHTML ? `<span style="color:${MUTED};">&nbsp;&nbsp;|&nbsp;&nbsp;</span>${socialHTML}` : ''}
+            </td></tr></table>
+        </td></tr>
+    </table>
+</body>
+</html>`;
+        }
+
+        function getFormData() {
+            const fd = new FormData(document.getElementById('signature-form'));
+            return Object.fromEntries(fd.entries());
+        }
+
+        function extractBody(html) {
+            return html.match(/<body[^>]*>([\s\S]*)<\/body>/)[1];
+        }
+
+        function generatePreview() {
+            const html = generateSignatureHTML(getFormData());
+            document.getElementById('signature-preview').innerHTML = extractBody(html);
+        }
+
+        async function copySignature() {
+            generatePreview();
+            const html = generateSignatureHTML(getFormData());
+            const body = extractBody(html);
+            const plain = document.getElementById('signature-preview').innerText;
+            try {
+                if (navigator.clipboard && window.ClipboardItem) {
+                    await navigator.clipboard.write([new ClipboardItem({
+                        'text/html': new Blob([body], { type: 'text/html' }),
+                        'text/plain': new Blob([plain], { type: 'text/plain' })
+                    })]);
+                    showToast('Signature copied — paste it into your email client.');
+                } else {
+                    legacyCopy();
+                }
+            } catch (e) {
+                legacyCopy();
+            }
+        }
+
+        function legacyCopy() {
+            // Fallback: select the rendered preview and execCommand copy (preserves rich text)
+            const el = document.getElementById('signature-preview');
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            try {
+                document.execCommand('copy');
+                showToast('Signature copied — paste it into your email client.');
+            } catch (e) {
+                showToast('Copy failed — use "Download HTML" instead.', true);
+            }
+            sel.removeAllRanges();
+        }
+
+        function showToast(msg, isError) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => { t.className = 'toast' + (isError ? ' error' : ''); }, 3500);
+        }
+
+        function downloadSingle() {
+            const data = getFormData();
+            const html = generateSignatureHTML(data);
+            const filename = `${data.firstName}_${data.lastName}_signature.html`.replace(/\s+/g, '');
+            downloadFile(html, filename);
+        }
+
+        function downloadFile(content, filename) {
+            const blob = new Blob([content], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function handleCSVUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => parseCSV(e.target.result);
+            reader.readAsText(file);
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '', inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const c = line[i];
+                if (c === '"') inQuotes = !inQuotes;
+                else if (c === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+                else current += c;
+            }
+            result.push(current.trim());
+            return result.map(s => s.replace(/^"|"$/g, ''));
+        }
+
+        function parseCSV(text) {
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            csvData = [];
+            for (let i = 1; i < lines.length; i++) {
+                const v = parseCSVLine(lines[i]);
+                if (v.length >= 5) {
+                    csvData.push({
+                        firstName: v[0] || '', lastName: v[1] || '', title: v[2] || '',
+                        phone: v[3] || '', email: v[4] || '', address: v[5] || '',
+                        ctaText: v[6] || '', ctaUrl: v[7] || '',
+                        linkedin: v[8] || '', facebook: v[9] || '', youtube: v[10] || '',
+                        photo: v[11] || ''
+                    });
+                }
+            }
+            document.getElementById('process-batch').style.display = csvData.length ? 'inline-block' : 'none';
+            showToast(csvData.length ? `${csvData.length} records loaded.` : 'No valid records found.', !csvData.length);
+        }
+
+        function processBatch() {
+            if (!csvData.length) { showToast('No CSV data to process.', true); return; }
+            generatedSignatures = [];
+            const list = document.getElementById('processing-list');
+            list.innerHTML = '';
+            document.getElementById('batch-results').style.display = 'block';
+            csvData.forEach(data => {
+                const html = generateSignatureHTML(data);
+                const filename = `${data.firstName}_${data.lastName}_signature.html`.replace(/\s+/g, '');
+                generatedSignatures.push({ filename, content: html });
+                const item = document.createElement('div');
+                item.className = 'processing-item';
+                item.textContent = `✓ ${data.firstName} ${data.lastName} (${data.email})`;
+                list.appendChild(item);
+            });
+            document.getElementById('download-batch').style.display = 'inline-block';
+            showToast(`${generatedSignatures.length} signatures generated.`);
+        }
+
+        async function downloadBatch() {
+            if (!generatedSignatures.length) { showToast('Nothing to download.', true); return; }
+            const zip = new JSZip();
+            generatedSignatures.forEach(s => zip.file(s.filename, s.content));
+            try {
+                const content = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'serenichron_signatures.zip';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                showToast('ZIP error: ' + e.message, true);
+            }
+        }
+    </script>
+</body>
+</html>
